@@ -1,9 +1,9 @@
 # bpbme280
 
 **One-shot BME280 telemetry over DTN (ION BP).**
-Reads the BME280 sensor on a Raspberry Pi, adds CPU temperature and 1-minute CPU load, optionally includes GPS coordinates, wraps everything in a compact JSON payload with short field names, sends **one BP bundle**, then exits.
+Reads the BME280 sensor on a Raspberry Pi, adds CPU temperature and 1-minute CPU load, optionally includes location string, wraps everything in a compact single-line JSON payload with short field names, sends **one BP bundle**, then exits.
 
-> JSON output uses concise field names and 1 decimal precision for efficient data transmission.
+> JSON output uses concise field names, 1 decimal precision, and single-line format for efficient data transmission.
 
 ---
 
@@ -13,7 +13,7 @@ Reads the BME280 sensor on a Raspberry Pi, adds CPU temperature and 1-minute CPU
 - 🌡️ **Sensors**: BME280 temperature, pressure, humidity (no WiringPi needed).
 - 🧠 **System stats**: CPU temperature & 1-minute load average.
 - 📦 **Compact JSON**: with short field names and 1 decimal precision.
-- 🌍 **GPS support**: Optional latitude/longitude coordinates.
+- 📍 **Location support**: Optional location string identifier.
 - 🧰 **One-shot**: Suitable for cron/systemd timers.
 
 ---
@@ -78,26 +78,26 @@ gcc bpbme280.o -o bpbme280 -L/usr/local/lib -lbp -lici -lm -lpthread
 
 ```bash
 # Basic (defaults: TTL=300s, i2c=/dev/i2c-1, addr=0x76)
-./bpbme280 ipn:268484800.6
+./bpbme280 ipn:268484800.6 ipn:268484820.1
 
 # Custom TTL
-./bpbme280 ipn:268484800.6 -t600
+./bpbme280 ipn:268484800.6 ipn:268484820.1 -t600
 
 # Different I²C address or bus
-./bpbme280 ipn:268484800.6 -a0x77 -d/dev/i2c-0
+./bpbme280 ipn:268484800.6 ipn:268484820.1 -a0x77 -d/dev/i2c-0
 
-# With GPS coordinates
-./bpbme280 ipn:268484800.6 -lat45.123456 -lon-75.654321
+# With location
+./bpbme280 ipn:268484800.6 ipn:268484820.1 -locLaboratory_A
 ```
 
 **Arguments**
 
 - `<destEID>`: Destination endpoint ID, e.g. `ipn:268484800.6`
+- `<sourceEID>`: Source endpoint ID, e.g. `ipn:268484820.1`
 - `-t<ttl>`: Bundle TTL in seconds (default `300`)
 - `-a<hex>`: BME280 I²C address (default `0x76`, use `0x77` if needed)
 - `-d<path>`: I²C device path (default `/dev/i2c-1`)
-- `-lat<lat>`: Latitude in decimal degrees (optional)
-- `-lon<lon>`: Longitude in decimal degrees (optional)
+- `-loc<location>`: Location string identifier (optional)
 
 ---
 
@@ -106,16 +106,7 @@ gcc bpbme280.o -o bpbme280 -L/usr/local/lib -lbp -lici -lm -lpthread
 The program prints the JSON it sends, then exits:
 
 ```
-JSON: {
-  "ts": 1758070260,
-  "temp": 28.0,
-  "press": 967.0,
-  "humid": 63.7,
-  "cpu_temp": 57.9,
-  "load": 0.64,
-  "lat": 45.123456,
-  "lon": -75.654321
-}
+JSON: {"src":"ipn:268484820.1","ts":1758074375,"temp":27.6,"press":967.2,"humid":63.1,"cpu_temp":56.8,"load":0.64,"loc":"Laboratory_A"}
 [i] bpbme280 sent one bundle and will exit.
 ```
 
@@ -123,33 +114,24 @@ JSON: {
 
 ## JSON Payload
 
-Compact JSON with short field names and 1 decimal precision:
+Compact single-line JSON with short field names and 1 decimal precision:
 
 ```json
-{
-  "ts": 1758070260,
-  "temp": 28.0,
-  "press": 967.0,
-  "humid": 63.7,
-  "cpu_temp": 57.9,
-  "load": 0.64,
-  "lat": 45.123456,
-  "lon": -75.654321
-}
+{"src":"ipn:268484820.1","ts":1758074375,"temp":27.6,"press":967.2,"humid":63.1,"cpu_temp":56.8,"load":0.64,"loc":"Laboratory_A"}
 ```
 
 **Fields**
 
+- `src`: Source endpoint ID (always included)
 - `ts`: UNIX epoch seconds
 - `temp`: BME280 temperature in °C (1 decimal)
 - `press`: BME280 atmospheric pressure in hPa (1 decimal)
 - `humid`: BME280 relative humidity in % (1 decimal)
 - `cpu_temp`: Raspberry Pi CPU temperature in °C (1 decimal)
 - `load`: System 1-minute load average (2 decimals)
-- `lat`: Latitude in decimal degrees (6 decimals, optional)
-- `lon`: Longitude in decimal degrees (6 decimals, optional)
+- `loc`: Location string identifier (optional)
 
-> Compact field names minimize bandwidth usage while maintaining readability. GPS coordinates are included only when specified via command-line arguments.
+> Single-line format and compact field names minimize bandwidth usage. Location is included only when specified via command-line argument.
 
 ---
 
@@ -174,7 +156,7 @@ Description=Send one BME280 JSON bundle over BP
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/bpbme280 dtn://<node>/<dest> -t600
+ExecStart=/usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600
 ```
 
 `/etc/systemd/system/bpbme280.timer`
@@ -196,20 +178,20 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now bpbme280.timer
 ```
 
-**With GPS coordinates:**
+**With location:**
 ```ini
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/bpbme280 ipn:268484800.6 -t600 -lat45.123456 -lon-75.654321
+ExecStart=/usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600 -locLaboratory_A
 ```
 
 ### Cron (alternative)
 
 ```bash
-*/5 * * * * /usr/local/bin/bpbme280 ipn:268484800.6 -t600 >/var/log/bpbme280.log 2>&1
+*/5 * * * * /usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600 >/var/log/bpbme280.log 2>&1
 
-# With GPS coordinates
-*/5 * * * * /usr/local/bin/bpbme280 ipn:268484800.6 -t600 -lat45.123456 -lon-75.654321 >/var/log/bpbme280.log 2>&1
+# With location
+*/5 * * * * /usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600 -locLaboratory_A >/var/log/bpbme280.log 2>&1
 ```
 
 ---

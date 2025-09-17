@@ -13,12 +13,11 @@
  * }
  *
  * Usage:
- *   bpbme280 <destEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-lat<lat>] [-lon<lon>]
+ *   bpbme280 <destEID> <sourceEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-loc<location>]
  *     -t : Bundle TTL seconds (default 300)
  *     -a : I2C address (default 0x76)
  *     -d : I2C device path (default /dev/i2c-1)
- *     -lat : Latitude in decimal degrees (optional)
- *     -lon : Longitude in decimal degrees (optional)
+ *     -loc : Location string (optional)
  *
  * Build:
  *   gcc -O2 -Wall -Wextra -std=c11 bpbme280.c -o bpbme280 -lbp -lici -lpthread
@@ -222,7 +221,7 @@ static int read_cpu_load_1min(double *outLoad)
 /* Short header string + short keys: hdr="ts,t,p,h,ct,cl" */
 static int compose_json(char *buf, size_t buflen,
                         int i2c_fd, bme280_calib_t *calib,
-                        double lat, double lon, int has_coords)
+                        const char *location, const char *source_ipn)
 {
 	int32_t t_raw, p_raw, h_raw;
 	if (bme280_read_raw(i2c_fd, &t_raw, &p_raw, &h_raw) < 0) return -1;
@@ -237,35 +236,19 @@ static int compose_json(char *buf, size_t buflen,
 
 	time_t ts = time(NULL);
 
-	/* JSON with shorter field names and 1 decimal precision */
+	/* JSON with shorter field names, 1 decimal precision, single line */
 	int n;
-	if (has_coords) {
+	if (location && location[0] != '\0') {
 		n = snprintf(
 			buf, buflen,
-			"{\n"
-			"  \"ts\": %ld,\n"
-			"  \"temp\": %.1f,\n"
-			"  \"press\": %.1f,\n"
-			"  \"humid\": %.1f,\n"
-			"  \"cpu_temp\": %.1f,\n"
-			"  \"load\": %.2f,\n"
-			"  \"lat\": %.6f,\n"
-			"  \"lon\": %.6f\n"
-			"}",
-			(long)ts, tC, pH, hR, cpuC, l1, lat, lon
+			"{\"src\":\"%s\",\"ts\":%ld,\"temp\":%.1f,\"press\":%.1f,\"humid\":%.1f,\"cpu_temp\":%.1f,\"load\":%.2f,\"loc\":\"%s\"}",
+			source_ipn, (long)ts, tC, pH, hR, cpuC, l1, location
 		);
 	} else {
 		n = snprintf(
 			buf, buflen,
-			"{\n"
-			"  \"ts\": %ld,\n"
-			"  \"temp\": %.1f,\n"
-			"  \"press\": %.1f,\n"
-			"  \"humid\": %.1f,\n"
-			"  \"cpu_temp\": %.1f,\n"
-			"  \"load\": %.2f\n"
-			"}",
-			(long)ts, tC, pH, hR, cpuC, l1
+			"{\"src\":\"%s\",\"ts\":%ld,\"temp\":%.1f,\"press\":%.1f,\"humid\":%.1f,\"cpu_temp\":%.1f,\"load\":%.2f}",
+			source_ipn, (long)ts, tC, pH, hR, cpuC, l1
 		);
 	}
 	return (n > 0 && (size_t)n < buflen) ? n : -1;
@@ -278,30 +261,27 @@ static int compose_json(char *buf, size_t buflen,
 int main(int argc, char **argv)
 {
 	char *destEid = NULL;
+	char *sourceEid = NULL;
 	int ttl = DEFAULT_TTL;
 	const char *i2c_dev = DEFAULT_I2C_DEV;
 	int i2c_addr = 0x76;
-	double lat = 0.0, lon = 0.0;
-	int has_coords = 0;
+	const char *location = NULL;
 
-	if (argc < 2) {
-		PUTS("Usage: bpbme280 <destEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-lat<lat>] [-lon<lon>]");
+	if (argc < 3) {
+		PUTS("Usage: bpbme280 <destEID> <sourceEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-loc<location>]");
 		return 0;
 	}
 	destEid = argv[1];
-	for (int i = 2; i < argc; i++) {
+	sourceEid = argv[2];
+	for (int i = 3; i < argc; i++) {
 		if (argv[i][0] == '-' && argv[i][1] == 't') {
 			ttl = atoi(argv[i] + 2);
 		} else if (argv[i][0] == '-' && argv[i][1] == 'a') {
 			i2c_addr = (int)strtol(argv[i] + 2, NULL, 0);
 		} else if (argv[i][0] == '-' && argv[i][1] == 'd') {
 			i2c_dev = argv[i] + 2;
-		} else if (strncmp(argv[i], "-lat", 4) == 0) {
-			lat = atof(argv[i] + 4);
-			has_coords = 1;
-		} else if (strncmp(argv[i], "-lon", 4) == 0) {
-			lon = atof(argv[i] + 4);
-			has_coords = 1;
+		} else if (strncmp(argv[i], "-loc", 4) == 0) {
+			location = argv[i] + 4;
 		}
 	}
 
@@ -363,7 +343,7 @@ int main(int argc, char **argv)
 
 	/* Compose compact JSON payload */
 	char json[256];
-	int len = compose_json(json, sizeof json, i2c_fd, &calib, lat, lon, has_coords);
+	int len = compose_json(json, sizeof json, i2c_fd, &calib, location, sourceEid);
 	if (len < 0) {
 		putErrmsg("Failed to read/compose JSON.", NULL);
 		goto cleanup;
