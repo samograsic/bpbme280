@@ -78,22 +78,22 @@ gcc bpbme280.o -o bpbme280 -L/usr/local/lib -lbp -lici -lm -lpthread
 
 ```bash
 # Basic (defaults: TTL=300s, i2c=/dev/i2c-1, addr=0x76)
-./bpbme280 ipn:268484800.6 ipn:268484820.1
+./bpbme280 ipn:268484820.1 ipn:268484800.6
 
 # Custom TTL
-./bpbme280 ipn:268484800.6 ipn:268484820.1 -t600
+./bpbme280 ipn:268484820.1 ipn:268484800.6 -t600
 
 # Different I²C address or bus
-./bpbme280 ipn:268484800.6 ipn:268484820.1 -a0x77 -d/dev/i2c-0
+./bpbme280 ipn:268484820.1 ipn:268484800.6 -a0x77 -d/dev/i2c-0
 
 # With location
-./bpbme280 ipn:268484800.6 ipn:268484820.1 -locLaboratory_A
+./bpbme280 ipn:268484820.1 ipn:268484800.6 -locLaboratory_A
 ```
 
 **Arguments**
 
-- `<destEID>`: Destination endpoint ID, e.g. `ipn:268484800.6`
-- `<sourceEID>`: Source endpoint ID, e.g. `ipn:268484820.1`
+- `<sourceEID>`: Source endpoint ID (this node), e.g. `ipn:268484820.1`
+- `<destEID>`: Destination endpoint ID (target), e.g. `ipn:268484800.6`
 - `-t<ttl>`: Bundle TTL in seconds (default `300`)
 - `-a<hex>`: BME280 I²C address (default `0x76`, use `0x77` if needed)
 - `-d<path>`: I²C device path (default `/dev/i2c-1`)
@@ -106,7 +106,7 @@ gcc bpbme280.o -o bpbme280 -L/usr/local/lib -lbp -lici -lm -lpthread
 The program prints the JSON it sends, then exits:
 
 ```
-JSON: {"src":"ipn:268484820.1","ts":1758074375,"temp":27.6,"press":967.2,"humid":63.1,"cpu_temp":56.8,"load":0.64,"loc":"Laboratory_A"}
+JSON: {"ts":1758074993,"temp":27.8,"press":967.4,"humid":60.8,"cpu_temp":57.3,"load":0.49,"loc":"TestLab"}
 [i] bpbme280 sent one bundle and will exit.
 ```
 
@@ -117,12 +117,11 @@ JSON: {"src":"ipn:268484820.1","ts":1758074375,"temp":27.6,"press":967.2,"humid"
 Compact single-line JSON with short field names and 1 decimal precision:
 
 ```json
-{"src":"ipn:268484820.1","ts":1758074375,"temp":27.6,"press":967.2,"humid":63.1,"cpu_temp":56.8,"load":0.64,"loc":"Laboratory_A"}
+{"ts":1758074993,"temp":27.8,"press":967.4,"humid":60.8,"cpu_temp":57.3,"load":0.49,"loc":"TestLab"}
 ```
 
 **Fields**
 
-- `src`: Source endpoint ID (always included)
 - `ts`: UNIX epoch seconds
 - `temp`: BME280 temperature in °C (1 decimal)
 - `press`: BME280 atmospheric pressure in hPa (1 decimal)
@@ -131,7 +130,7 @@ Compact single-line JSON with short field names and 1 decimal precision:
 - `load`: System 1-minute load average (2 decimals)
 - `loc`: Location string identifier (optional)
 
-> Single-line format and compact field names minimize bandwidth usage. Location is included only when specified via command-line argument.
+> Single-line format and compact field names minimize bandwidth usage. Source EID is included in the bundle header (primary block), not in JSON payload. Location is included only when specified via command-line argument.
 
 ---
 
@@ -156,7 +155,7 @@ Description=Send one BME280 JSON bundle over BP
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600
+ExecStart=/usr/local/bin/bpbme280 ipn:268484820.1 ipn:268484800.6 -t600
 ```
 
 `/etc/systemd/system/bpbme280.timer`
@@ -182,16 +181,16 @@ sudo systemctl enable --now bpbme280.timer
 ```ini
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600 -locLaboratory_A
+ExecStart=/usr/local/bin/bpbme280 ipn:268484820.1 ipn:268484800.6 -t600 -locLaboratory_A
 ```
 
 ### Cron (alternative)
 
 ```bash
-*/5 * * * * /usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600 >/var/log/bpbme280.log 2>&1
+*/5 * * * * /usr/local/bin/bpbme280 ipn:268484820.1 ipn:268484800.6 -t600 >/var/log/bpbme280.log 2>&1
 
 # With location
-*/5 * * * * /usr/local/bin/bpbme280 ipn:268484800.6 ipn:268484820.1 -t600 -locLaboratory_A >/var/log/bpbme280.log 2>&1
+*/5 * * * * /usr/local/bin/bpbme280 ipn:268484820.1 ipn:268484800.6 -t600 -locLaboratory_A >/var/log/bpbme280.log 2>&1
 ```
 
 ---

@@ -13,7 +13,7 @@
  * }
  *
  * Usage:
- *   bpbme280 <destEID> <sourceEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-loc<location>]
+ *   bpbme280 <sourceEID> <destEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-loc<location>]
  *     -t : Bundle TTL seconds (default 300)
  *     -a : I2C address (default 0x76)
  *     -d : I2C device path (default /dev/i2c-1)
@@ -221,7 +221,7 @@ static int read_cpu_load_1min(double *outLoad)
 /* Short header string + short keys: hdr="ts,t,p,h,ct,cl" */
 static int compose_json(char *buf, size_t buflen,
                         int i2c_fd, bme280_calib_t *calib,
-                        const char *location, const char *source_ipn)
+                        const char *location)
 {
 	int32_t t_raw, p_raw, h_raw;
 	if (bme280_read_raw(i2c_fd, &t_raw, &p_raw, &h_raw) < 0) return -1;
@@ -241,14 +241,14 @@ static int compose_json(char *buf, size_t buflen,
 	if (location && location[0] != '\0') {
 		n = snprintf(
 			buf, buflen,
-			"{\"src\":\"%s\",\"ts\":%ld,\"temp\":%.1f,\"press\":%.1f,\"humid\":%.1f,\"cpu_temp\":%.1f,\"load\":%.2f,\"loc\":\"%s\"}",
-			source_ipn, (long)ts, tC, pH, hR, cpuC, l1, location
+			"{\"ts\":%ld,\"temp\":%.1f,\"press\":%.1f,\"humid\":%.1f,\"cpu_temp\":%.1f,\"load\":%.2f,\"loc\":\"%s\"}",
+			(long)ts, tC, pH, hR, cpuC, l1, location
 		);
 	} else {
 		n = snprintf(
 			buf, buflen,
-			"{\"src\":\"%s\",\"ts\":%ld,\"temp\":%.1f,\"press\":%.1f,\"humid\":%.1f,\"cpu_temp\":%.1f,\"load\":%.2f}",
-			source_ipn, (long)ts, tC, pH, hR, cpuC, l1
+			"{\"ts\":%ld,\"temp\":%.1f,\"press\":%.1f,\"humid\":%.1f,\"cpu_temp\":%.1f,\"load\":%.2f}",
+			(long)ts, tC, pH, hR, cpuC, l1
 		);
 	}
 	return (n > 0 && (size_t)n < buflen) ? n : -1;
@@ -260,19 +260,19 @@ static int compose_json(char *buf, size_t buflen,
 
 int main(int argc, char **argv)
 {
-	char *destEid = NULL;
 	char *sourceEid = NULL;
+	char *destEid = NULL;
 	int ttl = DEFAULT_TTL;
 	const char *i2c_dev = DEFAULT_I2C_DEV;
 	int i2c_addr = 0x76;
 	const char *location = NULL;
 
 	if (argc < 3) {
-		PUTS("Usage: bpbme280 <destEID> <sourceEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-loc<location>]");
+		PUTS("Usage: bpbme280 <sourceEID> <destEID> [-t<ttl>] [-a0x76|0x77] [-d/dev/i2c-X] [-loc<location>]");
 		return 0;
 	}
-	destEid = argv[1];
-	sourceEid = argv[2];
+	sourceEid = argv[1];
+	destEid = argv[2];
 	for (int i = 3; i < argc; i++) {
 		if (argv[i][0] == '-' && argv[i][1] == 't') {
 			ttl = atoi(argv[i] + 2);
@@ -343,7 +343,7 @@ int main(int argc, char **argv)
 
 	/* Compose compact JSON payload */
 	char json[256];
-	int len = compose_json(json, sizeof json, i2c_fd, &calib, location, sourceEid);
+	int len = compose_json(json, sizeof json, i2c_fd, &calib, location);
 	if (len < 0) {
 		putErrmsg("Failed to read/compose JSON.", NULL);
 		goto cleanup;
@@ -369,13 +369,24 @@ int main(int argc, char **argv)
 		goto cleanup;
 	}
 
+	/* Open source SAP for sending */
+	BpSAP sourceSap;
+	if (bp_open_source(sourceEid, &sourceSap, 0) < 0)
+	{
+		putErrmsg("Can't open source endpoint.", sourceEid);
+		goto cleanup;
+	}
+
 	Object newBundle;
-	if (bp_send(NULL, destEid, NULL, ttl, BP_STD_PRIORITY,
+	if (bp_send(sourceSap, destEid, NULL, ttl, BP_STD_PRIORITY,
 	            NoCustodyRequested, 0, 0, NULL, zco, &newBundle) < 1)
 	{
 		putErrmsg("bpbme280 can't send ADU.", NULL);
+		bp_close(sourceSap);
 		goto cleanup;
 	}
+
+	bp_close(sourceSap);
 
 	PUTS("[i] bpbme280 sent one bundle and will exit.");
 
