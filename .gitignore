@@ -1,0 +1,16 @@
+# Build artifacts
+*.o
+bpbme280
+
+# Logs
+*.log
+
+# Temporary files
+*~
+*.tmp
+.DS_Store
+
+# IDE files
+.vscode/
+*.swp
+*.swo
